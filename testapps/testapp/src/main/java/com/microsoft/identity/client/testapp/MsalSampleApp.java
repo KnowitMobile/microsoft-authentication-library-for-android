@@ -56,6 +56,9 @@ public class MsalSampleApp extends Application {
                 mLogs.append(message).append('\n');
             }
         });
+
+        Logger.getInstance().setEnablePII(true);
+        Logger.getInstance().setEnableLogcatLog(true);
     }
 
     String getLogs() {

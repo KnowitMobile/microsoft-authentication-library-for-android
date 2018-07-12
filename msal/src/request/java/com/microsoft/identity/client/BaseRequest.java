@@ -45,6 +45,11 @@ abstract class BaseRequest {
     private Handler mHandler;
 
     protected final RequestContext mRequestContext;
+
+    public AuthenticationRequestParameters getAuthRequestParameters() {
+        return mAuthRequestParameters;
+    }
+
     protected final AuthenticationRequestParameters mAuthRequestParameters;
     protected final Context mContext;
     protected int mRequestId;

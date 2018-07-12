@@ -25,7 +25,24 @@ package com.microsoft.identity.client;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.os.Bundle;
+import android.webkit.WebView;
+
+import com.microsoft.identity.common.adal.internal.AuthenticationConstants;
+import com.microsoft.identity.common.adal.internal.util.StringExtensions;
+import com.microsoft.identity.common.internal.providers.microsoft.MicrosoftAuthorizationRequest;
+import com.microsoft.identity.common.internal.providers.microsoft.MicrosoftAuthorizationResponse;
+import com.microsoft.identity.common.internal.providers.microsoft.MicrosoftAuthorizationResult;
+import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsAuthorizationRequest;
+import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsAuthorizationResult;
+import com.microsoft.identity.common.internal.ui.embeddedwebview.AzureActiveDirectoryWebViewClient;
+import com.microsoft.identity.common.internal.ui.embeddedwebview.EmbeddedWebViewAuthorizationStrategy;
+import com.microsoft.identity.common.internal.ui.embeddedwebview.challengehandlers.IChallengeCompletionCallback;
+import com.microsoft.identity.msal.R;
+
+import java.io.Serializable;
+import java.util.UUID;
 
 /**
  * Custom tab requires the device to have a browser with custom tab support, chrome with version >= 45 comes with the
@@ -44,12 +61,37 @@ public final class AuthenticationActivity extends Activity {
     private boolean mRestarted;
     private UiEvent.Builder mUiEventBuilder;
     private String mTelemetryRequestId;
+    private boolean useEmbeddedWebView = true;
     private MsalChromeCustomTabManager mChromeCustomTabManager;
+    private EmbeddedWebViewAuthorizationStrategy<
+            AzureActiveDirectoryWebViewClient,
+            MicrosoftStsAuthorizationRequest,
+            MicrosoftStsAuthorizationResult> mEmbeddedWebViewAuthorizationStrategy;
+    private MicrosoftStsAuthorizationRequest mAuthorizationRequest;
+    private ChallengeCompletionCallback mChallengeCompletionCallback;
 
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        mChromeCustomTabManager = new MsalChromeCustomTabManager(this);
+        if (useEmbeddedWebView) {
+            Logger.verbose(TAG, null, "Heidi: create request");
+            mAuthorizationRequest = getAuthorizationRequestFromIntent(getIntent());
+            Logger.verbose(TAG, null, "Heidi: create callback");
+            mChallengeCompletionCallback = new ChallengeCompletionCallback();
+            Logger.verbose(TAG, null, "Heidi: create webViewClient");
+            AzureActiveDirectoryWebViewClient webViewClient = new AzureActiveDirectoryWebViewClient(this, mAuthorizationRequest, mChallengeCompletionCallback);
+            Logger.verbose(TAG, null, "Heidi: create EmbeddedWebViewAuthorizationStrategy");
+            try {
+                setContentView(R.layout.activity_authentication);
+                final WebView webview = (WebView) this.findViewById(R.id.webview);
+                        //(WebView) this.findViewById(this.getResources().getIdentifier("webView1", "id", this.getPackageName()));
+                mEmbeddedWebViewAuthorizationStrategy = new EmbeddedWebViewAuthorizationStrategy<>(webViewClient, webview);
+            } catch (final Exception exception) {
+                Logger.warning(TAG, null, "Heidi: exception thrown when create the strategy.");
+            }
+        } else {
+            mChromeCustomTabManager = new MsalChromeCustomTabManager(this);
+        }
 
         // If activity is killed by the os, savedInstance will be the saved bundle.
         if (savedInstanceState != null) {
@@ -89,13 +131,17 @@ public final class AuthenticationActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        mChromeCustomTabManager.bindCustomTabsService();
+        if (!useEmbeddedWebView) {
+            mChromeCustomTabManager.bindCustomTabsService();
+        }
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        mChromeCustomTabManager.unbindCustomTabsService();
+        if (!useEmbeddedWebView) {
+            mChromeCustomTabManager.unbindCustomTabsService();
+        }
     }
 
     /**
@@ -129,7 +175,11 @@ public final class AuthenticationActivity extends Activity {
         mRequestUrl = this.getIntent().getStringExtra(Constants.REQUEST_URL_KEY);
 
         Logger.infoPII(TAG, null, "Request to launch is: " + mRequestUrl);
-        mChromeCustomTabManager.launchChromeTabOrBrowserForUrl(mRequestUrl);
+        if (!useEmbeddedWebView) {
+            mChromeCustomTabManager.launchChromeTabOrBrowserForUrl(mRequestUrl);
+        } else {
+            mEmbeddedWebViewAuthorizationStrategy.requestAuthorization(mAuthorizationRequest);
+        }
     }
 
     @Override
@@ -180,5 +230,43 @@ public final class AuthenticationActivity extends Activity {
         errorIntent.putExtra(Constants.UIResponse.ERROR_CODE, errorCode);
         errorIntent.putExtra(Constants.UIResponse.ERROR_DESCRIPTION, errorDescription);
         returnToCaller(Constants.UIResponse.AUTH_CODE_ERROR, errorIntent);
+    }
+
+    private MicrosoftStsAuthorizationRequest getAuthorizationRequestFromIntent(final Intent callingIntent) {
+        Logger.verbose(TAG, null, "Heidi: Begin to generate the auth request.");
+        MicrosoftStsAuthorizationRequest authRequest = null;
+        Serializable request = callingIntent
+                .getSerializableExtra(AuthenticationConstants.Browser.REQUEST_MESSAGE);
+
+        if (request instanceof MicrosoftStsAuthorizationRequest) {
+            Logger.verbose(TAG, null, "Heidi: Finish generating the auth request.");
+            authRequest = (MicrosoftStsAuthorizationRequest) request;
+        }
+        return authRequest;
+    }
+
+    class ChallengeCompletionCallback implements IChallengeCompletionCallback {
+        @Override
+        public void onChallengeResponseReceived(final int returnCode, final Intent responseIntent) {
+            Logger.verbose(TAG, null, "onChallengeResponseReceived:" + returnCode);
+
+            if (mAuthorizationRequest == null) {
+                Logger.warning(TAG, null, "Request object is null");
+            } else {
+                // set request id related to this response to send the delegateId
+                Logger.verbose(TAG, null,
+                        "Set request id related to response. "
+                                + "REQUEST_ID for caller returned to:" + mAuthorizationRequest.getCorrelationId());
+                responseIntent.putExtra(AuthenticationConstants.Browser.REQUEST_ID, mAuthorizationRequest.getCorrelationId());
+            }
+
+            setResult(returnCode, responseIntent);
+            finish();
+        }
+
+        @Override
+        public void setPKeyAuthStatus(final boolean status) {
+            Logger.verbose(TAG, null, "setPKeyAuthStatus:" + status);
+        }
     }
 }

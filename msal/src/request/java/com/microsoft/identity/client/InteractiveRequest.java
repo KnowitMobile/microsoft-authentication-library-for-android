@@ -28,8 +28,14 @@ import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.util.Base64;
 
+import com.microsoft.identity.common.adal.internal.AuthenticationConstants;
+import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsAuthorizationRequest;
+import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsPromptBehavior;
+
 import java.io.UnsupportedEncodingException;
 import java.lang.ref.WeakReference;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -97,17 +103,76 @@ final class InteractiveRequest extends BaseRequest {
             throw new MsalClientException(MsalClientException.UNSUPPORTED_ENCODING, e.getMessage(), e);
         }
 
+
+//        final Intent intentToLaunch = new Intent(mContext, AuthenticationActivity.class);
+//        //
+//        intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, authorizeUri);
+//        intentToLaunch.putExtra(Constants.REQUEST_ID, mRequestId);
+//        intentToLaunch.putExtra(
+//                Constants.TELEMETRY_REQUEST_ID,
+//                mAuthRequestParameters.getRequestContext().getTelemetryRequestId().toString()
+//        );
+//
+//        if (!resolveIntent(intentToLaunch)) {
+//            throw new MsalClientException(MsalClientException.UNRESOLVABLE_INTENT, "The intent is not resolvable");
+//        }
+
+        //Create the Authorization Request from the auth parameter
+        MicrosoftStsPromptBehavior promptBehavior;
+        switch (getAuthRequestParameters().getUiBehavior()) {
+            case CONSENT:
+                promptBehavior = MicrosoftStsPromptBehavior.CONSENT;
+                break;
+            case FORCE_LOGIN:
+                promptBehavior = MicrosoftStsPromptBehavior.FORCE_LOGIN;
+                break;
+            default:
+                promptBehavior = MicrosoftStsPromptBehavior.SELECT_ACCOUNT;
+                break;
+        }
+
+        MicrosoftStsAuthorizationRequest authorizationRequest = new MicrosoftStsAuthorizationRequest(
+                "code",
+                getAuthRequestParameters().getClientId(),
+                getAuthRequestParameters().getRedirectUri(),
+                null,
+                getAuthRequestParameters().getScope(),
+                getAuthRequestParameters().getAuthority().getAuthorityUrl(),
+                getAuthRequestParameters().getAuthority().getAuthorizeEndpoint(),
+                getAuthRequestParameters().getLoginHint(),
+                getAuthRequestParameters().getRequestContext().getCorrelationId(),
+                null,
+                getAuthRequestParameters().getExtraQueryParam(),
+                "0.0.1",
+                promptBehavior,
+                null,
+                null,
+                null,
+                getAuthRequestParameters().getSliceParameters(),
+                null);
+
+        if (null !=  getAuthRequestParameters().getUser()) {
+            authorizationRequest.setUid(getAuthRequestParameters().getUser().getUid());
+            authorizationRequest.setUtid(getAuthRequestParameters().getUser().getUtid());
+            authorizationRequest.setDisplayableId(getAuthRequestParameters().getUser().getDisplayableId());
+
+        }
+
+        //Create the intent to launch
         final Intent intentToLaunch = new Intent(mContext, AuthenticationActivity.class);
+        //
         intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, authorizeUri);
         intentToLaunch.putExtra(Constants.REQUEST_ID, mRequestId);
         intentToLaunch.putExtra(
                 Constants.TELEMETRY_REQUEST_ID,
                 mAuthRequestParameters.getRequestContext().getTelemetryRequestId().toString()
         );
+        intentToLaunch.putExtra(AuthenticationConstants.Browser.REQUEST_MESSAGE, authorizationRequest);
 
         if (!resolveIntent(intentToLaunch)) {
             throw new MsalClientException(MsalClientException.UNRESOLVABLE_INTENT, "The intent is not resolvable");
         }
+
 
         throwIfNetworkNotAvailable();
 
