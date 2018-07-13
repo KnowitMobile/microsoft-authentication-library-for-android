@@ -61,7 +61,7 @@ public final class AuthenticationActivity extends Activity {
     private boolean mRestarted;
     private UiEvent.Builder mUiEventBuilder;
     private String mTelemetryRequestId;
-    private boolean useEmbeddedWebView = true;
+    private boolean useEmbeddedWebView = false;
     private MsalChromeCustomTabManager mChromeCustomTabManager;
     private EmbeddedWebViewAuthorizationStrategy<
             AzureActiveDirectoryWebViewClient,
@@ -108,9 +108,9 @@ public final class AuthenticationActivity extends Activity {
             return;
         }
 
-        mRequestUrl = data.getStringExtra(Constants.REQUEST_URL_KEY);
+        //mRequestUrl = data.getStringExtra(Constants.REQUEST_URL_KEY);
         mRequestId = data.getIntExtra(Constants.REQUEST_ID, 0);
-        if (MsalUtils.isEmpty(mRequestUrl)) {
+        /*if (MsalUtils.isEmpty(mRequestUrl)) {
             sendError(MsalClientException.UNRESOLVABLE_INTENT, "Request url is not set on the intent");
             return;
         }
@@ -121,7 +121,7 @@ public final class AuthenticationActivity extends Activity {
             Logger.info(TAG, null, "Chrome is not installed on the device, cannot continue with auth.");
             sendError(MsalClientException.CHROME_NOT_INSTALLED, "Chrome is not installed on the device, cannot proceed with auth");
             return;
-        }
+        }*/
 
         mTelemetryRequestId = data.getStringExtra(Constants.TELEMETRY_REQUEST_ID);
         mUiEventBuilder = new UiEvent.Builder();
@@ -156,7 +156,7 @@ public final class AuthenticationActivity extends Activity {
         final String url = intent.getStringExtra(Constants.CUSTOM_TAB_REDIRECT);
 
         final Intent resultIntent = new Intent();
-        resultIntent.putExtra(Constants.AUTHORIZATION_FINAL_URL, url);
+        resultIntent.putExtra(AuthenticationConstants.Browser.AUTHORIZATION_FINAL_URL, url);
         returnToCaller(Constants.UIResponse.AUTH_CODE_COMPLETE,
                 resultIntent);
     }

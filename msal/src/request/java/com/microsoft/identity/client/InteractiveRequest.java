@@ -29,8 +29,10 @@ import android.content.pm.ResolveInfo;
 import android.util.Base64;
 
 import com.microsoft.identity.common.adal.internal.AuthenticationConstants;
+import com.microsoft.identity.common.exception.ClientException;
 import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsAuthorizationRequest;
 import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsPromptBehavior;
+import com.microsoft.identity.common.internal.providers.oauth2.PkceChallenge;
 
 import java.io.UnsupportedEncodingException;
 import java.lang.ref.WeakReference;
@@ -60,7 +62,7 @@ final class InteractiveRequest extends BaseRequest {
     private static CountDownLatch sResultLock = new CountDownLatch(1);
 
     private final ActivityWrapper mActivityWrapper;
-    private PKCEChallengeFactory.PKCEChallenge mPKCEChallenge;
+    private PkceChallenge mPKCEChallenge;
 
     /**
      * Constructor for {@link InteractiveRequest}.
@@ -95,18 +97,9 @@ final class InteractiveRequest extends BaseRequest {
     synchronized void preTokenRequest() throws MsalUserCancelException, MsalClientException, MsalServiceException,
             MsalUiRequiredException {
         super.preTokenRequest();
-        final String authorizeUri;
-        try {
-            Logger.info(TAG, mAuthRequestParameters.getRequestContext(), "Prepare authorize request uri for interactive flow.");
-            authorizeUri = appendQueryStringToAuthorizeEndpoint();
-        } catch (final UnsupportedEncodingException e) {
-            throw new MsalClientException(MsalClientException.UNSUPPORTED_ENCODING, e.getMessage(), e);
-        }
-
-
 //        final Intent intentToLaunch = new Intent(mContext, AuthenticationActivity.class);
 //        //
-//        intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, authorizeUri);
+
 //        intentToLaunch.putExtra(Constants.REQUEST_ID, mRequestId);
 //        intentToLaunch.putExtra(
 //                Constants.TELEMETRY_REQUEST_ID,
@@ -155,13 +148,27 @@ final class InteractiveRequest extends BaseRequest {
             authorizationRequest.setUid(getAuthRequestParameters().getUser().getUid());
             authorizationRequest.setUtid(getAuthRequestParameters().getUser().getUtid());
             authorizationRequest.setDisplayableId(getAuthRequestParameters().getUser().getDisplayableId());
+        }
 
+        try {
+            mPKCEChallenge = PkceChallenge.newPkceChallenge();
+            authorizationRequest.setPkceChallenge(mPKCEChallenge);
+        } catch (final ClientException exception) {
+            throw new MsalClientException(exception.getErrorCode(), exception.getMessage(), exception);
+        }
+
+        final String authorizeUri;
+        try {
+            Logger.info(TAG, mAuthRequestParameters.getRequestContext(), "Prepare authorize request uri for interactive flow.");
+            authorizeUri = appendQueryStringToAuthorizeEndpoint();
+        } catch (final UnsupportedEncodingException e) {
+            throw new MsalClientException(MsalClientException.UNSUPPORTED_ENCODING, e.getMessage(), e);
         }
 
         //Create the intent to launch
         final Intent intentToLaunch = new Intent(mContext, AuthenticationActivity.class);
-        //
         intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, authorizeUri);
+        //intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, authorizeUri);
         intentToLaunch.putExtra(Constants.REQUEST_ID, mRequestId);
         intentToLaunch.putExtra(
                 Constants.TELEMETRY_REQUEST_ID,
@@ -200,7 +207,7 @@ final class InteractiveRequest extends BaseRequest {
         oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.REDIRECT_URI,
                 mAuthRequestParameters.getRedirectUri());
         // Adding code verifier per PKCE spec. See https://tools.ietf.org/html/rfc7636
-        oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.CODE_VERIFIER, mPKCEChallenge.mCodeVerifier);
+        oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.CODE_VERIFIER, mPKCEChallenge.getCodeVerifier());
     }
 
     @Override
@@ -303,11 +310,11 @@ final class InteractiveRequest extends BaseRequest {
 
     private void addPKCEChallengeToRequestParameters(final Map<String, String> requestParameters) throws MsalClientException {
         // Create our Challenge
-        mPKCEChallenge = PKCEChallengeFactory.newPKCEChallenge();
+        //mPKCEChallenge = PKCEChallengeFactory.newPKCEChallenge();
 
         // Add it to our Authorization request
-        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE, mPKCEChallenge.mCodeChallenge);
-        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE_METHOD, PKCEChallengeFactory.PKCEChallenge.ChallengeMethod.S256.name());
+        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE, mPKCEChallenge.getCodeChallenge());
+        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE_METHOD, mPKCEChallenge.getCodeChallengeMethod());
     }
 
     private void addUiBehaviorToRequestParameters(final Map<String, String> requestParameters) {
@@ -349,7 +356,8 @@ final class InteractiveRequest extends BaseRequest {
                         + authorizationResult.getErrorDescription(), MsalServiceException.DEFAULT_STATUS_CODE, null);
             case SUCCESS:
                 // verify if the state is the same as the one we send
-                verifyStateInResponse(authorizationResult.getState());
+                //ToDo Update the state verification
+                //verifyStateInResponse(authorizationResult.getState());
                 // Happy path, continue the process to use code for new access token.
                 return;
             default:
