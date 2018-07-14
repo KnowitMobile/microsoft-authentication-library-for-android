@@ -30,10 +30,6 @@ import android.os.Bundle;
 import android.webkit.WebView;
 
 import com.microsoft.identity.common.adal.internal.AuthenticationConstants;
-import com.microsoft.identity.common.adal.internal.util.StringExtensions;
-import com.microsoft.identity.common.internal.providers.microsoft.MicrosoftAuthorizationRequest;
-import com.microsoft.identity.common.internal.providers.microsoft.MicrosoftAuthorizationResponse;
-import com.microsoft.identity.common.internal.providers.microsoft.MicrosoftAuthorizationResult;
 import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsAuthorizationRequest;
 import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsAuthorizationResult;
 import com.microsoft.identity.common.internal.ui.embeddedwebview.AzureActiveDirectoryWebViewClient;
@@ -61,7 +57,7 @@ public final class AuthenticationActivity extends Activity {
     private boolean mRestarted;
     private UiEvent.Builder mUiEventBuilder;
     private String mTelemetryRequestId;
-    private boolean useEmbeddedWebView = false;
+    private boolean useEmbeddedWebView = true;
     private MsalChromeCustomTabManager mChromeCustomTabManager;
     private EmbeddedWebViewAuthorizationStrategy<
             AzureActiveDirectoryWebViewClient,
@@ -73,9 +69,9 @@ public final class AuthenticationActivity extends Activity {
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mAuthorizationRequest = getAuthorizationRequestFromIntent(getIntent());
+
         if (useEmbeddedWebView) {
-            Logger.verbose(TAG, null, "Heidi: create request");
-            mAuthorizationRequest = getAuthorizationRequestFromIntent(getIntent());
             Logger.verbose(TAG, null, "Heidi: create callback");
             mChallengeCompletionCallback = new ChallengeCompletionCallback();
             Logger.verbose(TAG, null, "Heidi: create webViewClient");
@@ -152,13 +148,15 @@ public final class AuthenticationActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        Logger.info(TAG, null, "onNewIntent is called, received redirect from system webview.");
-        final String url = intent.getStringExtra(Constants.CUSTOM_TAB_REDIRECT);
+        if (!useEmbeddedWebView) {
+            Logger.info(TAG, null, "onNewIntent is called, received redirect from system webview.");
+            final String url = intent.getStringExtra(Constants.CUSTOM_TAB_REDIRECT);
 
-        final Intent resultIntent = new Intent();
-        resultIntent.putExtra(AuthenticationConstants.Browser.AUTHORIZATION_FINAL_URL, url);
-        returnToCaller(Constants.UIResponse.AUTH_CODE_COMPLETE,
-                resultIntent);
+            final Intent resultIntent = new Intent();
+            resultIntent.putExtra(AuthenticationConstants.Browser.AUTHORIZATION_FINAL_URL, url);
+            returnToCaller(Constants.UIResponse.AUTH_CODE_COMPLETE,
+                    resultIntent);
+        }
     }
 
     @Override
@@ -172,10 +170,9 @@ public final class AuthenticationActivity extends Activity {
 
         mRestarted = true;
 
-        mRequestUrl = this.getIntent().getStringExtra(Constants.REQUEST_URL_KEY);
-
-        Logger.infoPII(TAG, null, "Request to launch is: " + mRequestUrl);
         if (!useEmbeddedWebView) {
+            mRequestUrl = this.getIntent().getStringExtra(Constants.REQUEST_URL_KEY);
+            Logger.infoPII(TAG, null, "Request to launch is: " + mRequestUrl);
             mChromeCustomTabManager.launchChromeTabOrBrowserForUrl(mRequestUrl);
         } else {
             mEmbeddedWebViewAuthorizationStrategy.requestAuthorization(mAuthorizationRequest);

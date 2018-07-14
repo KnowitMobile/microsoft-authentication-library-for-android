@@ -27,9 +27,11 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.ResolveInfo;
 import android.util.Base64;
+import android.util.Log;
 
 import com.microsoft.identity.common.adal.internal.AuthenticationConstants;
 import com.microsoft.identity.common.exception.ClientException;
+import com.microsoft.identity.common.exception.ErrorStrings;
 import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsAuthorizationRequest;
 import com.microsoft.identity.common.internal.providers.microsoft.microsoftsts.MicrosoftStsPromptBehavior;
 import com.microsoft.identity.common.internal.providers.oauth2.PkceChallenge;
@@ -59,10 +61,9 @@ final class InteractiveRequest extends BaseRequest {
 
     static final int BROWSER_FLOW = 1001;
     private static AuthorizationResult sAuthorizationResult;
+    private static MicrosoftStsAuthorizationRequest sAuthorizationRequest;
     private static CountDownLatch sResultLock = new CountDownLatch(1);
-
     private final ActivityWrapper mActivityWrapper;
-    private PkceChallenge mPKCEChallenge;
 
     /**
      * Constructor for {@link InteractiveRequest}.
@@ -90,27 +91,7 @@ final class InteractiveRequest extends BaseRequest {
         }
     }
 
-    /**
-     * Pre token request. Launch either chrome custom tab or chrome to get the auth code back.
-     */
-    @Override
-    synchronized void preTokenRequest() throws MsalUserCancelException, MsalClientException, MsalServiceException,
-            MsalUiRequiredException {
-        super.preTokenRequest();
-//        final Intent intentToLaunch = new Intent(mContext, AuthenticationActivity.class);
-//        //
-
-//        intentToLaunch.putExtra(Constants.REQUEST_ID, mRequestId);
-//        intentToLaunch.putExtra(
-//                Constants.TELEMETRY_REQUEST_ID,
-//                mAuthRequestParameters.getRequestContext().getTelemetryRequestId().toString()
-//        );
-//
-//        if (!resolveIntent(intentToLaunch)) {
-//            throw new MsalClientException(MsalClientException.UNRESOLVABLE_INTENT, "The intent is not resolvable");
-//        }
-
-        //Create the Authorization Request from the auth parameter
+    private MicrosoftStsAuthorizationRequest createAuthRequest() {
         MicrosoftStsPromptBehavior promptBehavior;
         switch (getAuthRequestParameters().getUiBehavior()) {
             case CONSENT:
@@ -125,7 +106,7 @@ final class InteractiveRequest extends BaseRequest {
         }
 
         MicrosoftStsAuthorizationRequest authorizationRequest = new MicrosoftStsAuthorizationRequest(
-                "code",
+                OauthConstants.Oauth2Parameters.CODE,
                 getAuthRequestParameters().getClientId(),
                 getAuthRequestParameters().getRedirectUri(),
                 null,
@@ -136,7 +117,7 @@ final class InteractiveRequest extends BaseRequest {
                 getAuthRequestParameters().getRequestContext().getCorrelationId(),
                 null,
                 getAuthRequestParameters().getExtraQueryParam(),
-                "0.0.1",
+                PublicClientApplication.getSdkVersion(),
                 promptBehavior,
                 null,
                 null,
@@ -150,36 +131,40 @@ final class InteractiveRequest extends BaseRequest {
             authorizationRequest.setDisplayableId(getAuthRequestParameters().getUser().getDisplayableId());
         }
 
-        try {
-            mPKCEChallenge = PkceChallenge.newPkceChallenge();
-            authorizationRequest.setPkceChallenge(mPKCEChallenge);
-        } catch (final ClientException exception) {
-            throw new MsalClientException(exception.getErrorCode(), exception.getMessage(), exception);
-        }
+        return authorizationRequest;
+    }
 
-        final String authorizeUri;
-        try {
-            Logger.info(TAG, mAuthRequestParameters.getRequestContext(), "Prepare authorize request uri for interactive flow.");
-            authorizeUri = appendQueryStringToAuthorizeEndpoint();
-        } catch (final UnsupportedEncodingException e) {
-            throw new MsalClientException(MsalClientException.UNSUPPORTED_ENCODING, e.getMessage(), e);
-        }
+    /**
+     * Pre token request. Launch either chrome custom tab or chrome to get the auth code back.
+     */
+    @Override
+    synchronized void preTokenRequest() throws MsalUserCancelException, MsalClientException, MsalServiceException,
+            MsalUiRequiredException {
+        super.preTokenRequest();
+        sAuthorizationRequest = createAuthRequest();
 
         //Create the intent to launch
         final Intent intentToLaunch = new Intent(mContext, AuthenticationActivity.class);
-        intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, authorizeUri);
-        //intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, authorizeUri);
+        try {
+            intentToLaunch.putExtra(Constants.REQUEST_URL_KEY, sAuthorizationRequest.getAuthorizationStartUrl());
+        } catch (final ClientException exception) {
+            Logger.errorPII(TAG, mRequestContext, exception.getMessage(), exception);
+            throw new MsalClientException(exception.getErrorCode(), exception.getMessage(), exception);
+        } catch (final UnsupportedEncodingException exception) {
+            Logger.errorPII(TAG, mRequestContext, exception.getMessage(), exception);
+            throw new MsalClientException(ErrorStrings.UNSUPPORTED_ENCODING, exception.getMessage(), exception);
+        }
+
         intentToLaunch.putExtra(Constants.REQUEST_ID, mRequestId);
         intentToLaunch.putExtra(
                 Constants.TELEMETRY_REQUEST_ID,
                 mAuthRequestParameters.getRequestContext().getTelemetryRequestId().toString()
         );
-        intentToLaunch.putExtra(AuthenticationConstants.Browser.REQUEST_MESSAGE, authorizationRequest);
+        intentToLaunch.putExtra(AuthenticationConstants.Browser.REQUEST_MESSAGE, sAuthorizationRequest);
 
         if (!resolveIntent(intentToLaunch)) {
             throw new MsalClientException(MsalClientException.UNRESOLVABLE_INTENT, "The intent is not resolvable");
         }
-
 
         throwIfNetworkNotAvailable();
 
@@ -204,10 +189,9 @@ final class InteractiveRequest extends BaseRequest {
         oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.GRANT_TYPE,
                 OauthConstants.Oauth2GrantType.AUTHORIZATION_CODE);
         oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.CODE, sAuthorizationResult.getAuthCode());
-        oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.REDIRECT_URI,
-                mAuthRequestParameters.getRedirectUri());
+        oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.REDIRECT_URI, sAuthorizationRequest.getRedirectUri());
         // Adding code verifier per PKCE spec. See https://tools.ietf.org/html/rfc7636
-        oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.CODE_VERIFIER, mPKCEChallenge.getCodeVerifier());
+        oauth2Client.addBodyParameter(OauthConstants.Oauth2Parameters.CODE_VERIFIER, sAuthorizationRequest.getPkceChallenge().getCodeVerifier());
     }
 
     @Override
@@ -313,8 +297,8 @@ final class InteractiveRequest extends BaseRequest {
         //mPKCEChallenge = PKCEChallengeFactory.newPKCEChallenge();
 
         // Add it to our Authorization request
-        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE, mPKCEChallenge.getCodeChallenge());
-        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE_METHOD, mPKCEChallenge.getCodeChallengeMethod());
+        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE, sAuthorizationRequest.getPkceChallenge().getCodeChallenge());
+        requestParameters.put(OauthConstants.Oauth2Parameters.CODE_CHALLENGE_METHOD, sAuthorizationRequest.getPkceChallenge().getCodeChallengeMethod());
     }
 
     private void addUiBehaviorToRequestParameters(final Map<String, String> requestParameters) {
