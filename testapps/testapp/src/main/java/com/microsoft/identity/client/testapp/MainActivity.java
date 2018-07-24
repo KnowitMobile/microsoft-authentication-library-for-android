@@ -276,7 +276,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             case AAD :
                 return Constants.AAD_AUTHORITY;
             case B2C:
-                return "B2c is not configured yet";
+                return Constants.B2C_AUTHORITY;
         }
 
         throw new IllegalArgumentException("Not supported authority type");
@@ -299,7 +299,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         try {
             mApplication.setValidateAuthority(true);
             mApplication.acquireToken(this, scopes, loginHint, uiBehavior, extraQueryParam, extraScope,
-                    null, getAuthenticationCallback());
+                    mAuthority, getAuthenticationCallback());
         } catch (IllegalArgumentException e) {
             showMessage("Scope cannot be blank.");
         }

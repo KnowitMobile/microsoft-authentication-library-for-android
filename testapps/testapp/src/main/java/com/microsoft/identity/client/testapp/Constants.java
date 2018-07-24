@@ -41,4 +41,5 @@ public class Constants {
     }
 
     final static String AAD_AUTHORITY = "https://login.microsoftonline.com/common";
+    final static String B2C_AUTHORITY = "https://login.microsoftonline.com/tfp/fabrikamb2c.onmicrosoft.com/B2C_1_SUSI";
 }

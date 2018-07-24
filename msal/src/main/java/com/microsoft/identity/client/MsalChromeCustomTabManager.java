@@ -26,7 +26,11 @@ package com.microsoft.identity.client;
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
+import android.os.Build;
 import android.support.customtabs.CustomTabsClient;
 import android.support.customtabs.CustomTabsIntent;
 import android.support.customtabs.CustomTabsServiceConnection;
@@ -35,6 +39,9 @@ import android.support.customtabs.CustomTabsSession;
 import com.microsoft.identity.common.exception.ErrorStrings;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -46,6 +53,9 @@ public class MsalChromeCustomTabManager {
     private String mChromePackageWithCustomTabSupport;
     private Activity mParentActivity;
     private static final long CUSTOM_TABS_MAX_CONNECTION_TIMEOUT = 1L;
+
+    private static final String SCHEME_HTTP = "http";
+    private static final String SCHEME_HTTPS = "https";
 
     /**
      * Constructor of MsalChromeCustomTabManager.
@@ -137,17 +147,84 @@ public class MsalChromeCustomTabManager {
      * @param requestUrl URL to be loaded.
      */
     public void launchChromeTabOrBrowserForUrl(String requestUrl) {
-        if (mChromePackageWithCustomTabSupport != null && mCustomTabsIntent != null) {
-            Logger.info(TAG, null, "ChromeCustomTab support is available, launching chrome tab.");
-            mCustomTabsIntent.launchUrl(mParentActivity, Uri.parse(requestUrl));
-        } else {
-            Logger.info(TAG, null, "Chrome tab support is not available, launching chrome browser.");
-            final Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(requestUrl));
-            ////TODO: Can move MsalUtils chrome specific util method to common when refactoring.
-            browserIntent.setPackage(MsalUtils.getChromePackage(mParentActivity.getApplicationContext()));
-            browserIntent.addCategory(Intent.CATEGORY_BROWSABLE);
-            mParentActivity.startActivity(browserIntent);
+//        if (mChromePackageWithCustomTabSupport != null && mCustomTabsIntent != null) {
+//            Logger.info(TAG, null, "ChromeCustomTab support is available, launching chrome tab.");
+//            mCustomTabsIntent.launchUrl(mParentActivity, Uri.parse(requestUrl));
+//        } else {
+        Logger.info(TAG, null, "Heidi: launch the default browser");
+        final List<String> browserList = getBrowserList();
+        //Launch the default browser
+        final Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(requestUrl));
+        Logger.info(TAG, null, "Heidi: launch package" + browserList.get(0).toString());
+        browserIntent.setPackage(browserList.get(1));
+        browserIntent.addCategory(Intent.CATEGORY_BROWSABLE);
+        mParentActivity.startActivity(browserIntent);
+//        }
+    }
+
+    private List<String> getBrowserList() {
+        //get the list of browsers
+        final Intent BROWSER_INTENT = new Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("http://www.example.com"));
+        List<String> browserList = new ArrayList<>();
+        PackageManager pm = mParentActivity.getPackageManager();
+        int queryFlag = PackageManager.GET_RESOLVED_FILTER;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            queryFlag |= PackageManager.MATCH_ALL;
         }
+        List<ResolveInfo> resolvedActivityList =
+                pm.queryIntentActivities(BROWSER_INTENT, queryFlag);
+
+        for (ResolveInfo info : resolvedActivityList) {
+            // ignore handlers which are not browsers
+            if (!isFullBrowser(info)) {
+                continue;
+            }
+
+            try {
+                PackageInfo packageInfo = pm.getPackageInfo(
+                        info.activityInfo.packageName,
+                        PackageManager.GET_SIGNATURES);
+
+                browserList.add(packageInfo.packageName);
+            } catch (PackageManager.NameNotFoundException e) {
+                // a descriptor cannot be generated without the package info
+            }
+        }
+        Logger.verbose(TAG, null, "Heidi: found " + browserList.size() + " browsers.");
+        return browserList;
+    }
+
+    private static boolean isFullBrowser(ResolveInfo resolveInfo) {
+        // The filter must match ACTION_VIEW, CATEGORY_BROWSEABLE, and at least one scheme,
+        if (!resolveInfo.filter.hasAction(Intent.ACTION_VIEW)
+                || !resolveInfo.filter.hasCategory(Intent.CATEGORY_BROWSABLE)
+                || resolveInfo.filter.schemesIterator() == null) {
+            return false;
+        }
+
+        // The filter must not be restricted to any particular set of authorities
+        if (resolveInfo.filter.authoritiesIterator() != null) {
+            return false;
+        }
+
+        // The filter must support both HTTP and HTTPS.
+        boolean supportsHttp = false;
+        boolean supportsHttps = false;
+        Iterator<String> schemeIter = resolveInfo.filter.schemesIterator();
+        while (schemeIter.hasNext()) {
+            String scheme = schemeIter.next();
+            supportsHttp |= SCHEME_HTTP.equals(scheme);
+            supportsHttps |= SCHEME_HTTPS.equals(scheme);
+
+            if (supportsHttp && supportsHttps) {
+                return true;
+            }
+        }
+
+        // at least one of HTTP or HTTPS is not supported
+        return false;
     }
 
     /**
