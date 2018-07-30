@@ -1,9 +1,11 @@
 apply plugin: 'com.android.library'
-apply plugin: 'jacoco'
 apply plugin: 'checkstyle'
 apply plugin: 'pmd'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
 // This plugin publishes msal in to the local maven repo
-apply plugin: 'com.github.dcendents.android-maven'
+
+group = 'com.microsoft.identity.client'
 
 android {
     compileSdkVersion rootProject.ext.compileSdkVersion
@@ -22,6 +24,7 @@ android {
     buildTypes {
         debug {
             testCoverageEnabled false
+            debuggable true
         }
         release {
             testCoverageEnabled false
@@ -34,6 +37,23 @@ android {
     lintOptions {
         abortOnError true
         disable 'OldTargetApi'
+    }
+
+    flavorDimensions "main"
+
+    productFlavors {
+        // The 'local' productFlavor sources common from mavenLocal and is intended to be used
+        // during development.
+        local {
+            dimension "main"
+            versionNameSuffix "-local"
+        }
+
+        // The 'dist' productFlavor sources common from a central repository and is intended
+        // to be used for releases.
+        dist {
+            dimension "main"
+        }
     }
 
     sourceSets {
@@ -49,26 +69,6 @@ android {
             outputFileName = fileName
         }
     }
-}
-
-task jacocoTestReport(type: JacocoReport, dependsOn: 'testDebugUnitTest') {
-    reports {
-        xml.enabled = true
-        html.enabled = true
-    }
-
-    jacocoClasspath = configurations['androidJacocoAnt']
-
-    def fileFilter = ['**/R.class', '**/R$*.class', '**/BuildConfig.*', '**/Manifest*.*', '**/*Test*.*', 'android/**/*.*']
-    def debugTree = fileTree(dir: "${buildDir}/intermediates/classes/debug", excludes: fileFilter)
-    def mainSrc = "${project.projectDir}/src/main/java"
-
-    sourceDirectories = files([mainSrc])
-    classDirectories = files([debugTree])
-    executionData = fileTree(dir: "$buildDir", includes: [
-            "jacoco/testDebugUnitTest.exec",
-            "outputs/code-coverage/connected/*coverage.ec"
-    ])
 }
 
 // Task to generate javadoc
@@ -112,7 +112,13 @@ dependencies {
     // Set this dependency to use JUnit 4 rules
     androidTestImplementation "com.android.support.test:rules:$rootProject.ext.rulesVersion"
     androidTestImplementation "org.mockito:mockito-android:$rootProject.ext.mockitoAndroidVersion"
-    implementation(project(':common')) {
+   // 'local' flavor dependencies
+    localApi(project(":common")) {
+        transitive = false
+    }
+
+    // 'dist' flavor dependencies
+    distApi("com.microsoft.identity:common:0.0.2-local") {
         transitive = false
     }
 }
@@ -153,7 +159,72 @@ task pmd(type: Pmd) {
         html.enabled = true
     }
 }
+publishing {
+    publications {
+        msal(MavenPublication) {
+            groupId 'com.microsoft.identity.client'
+            artifactId 'msal'
+            //Edit the 'version' here for VSTS RC build
+            version = project.version
 
+            pom.withXml {
+                // Custom values
+
+                // Name
+                asNode().appendNode('name', 'msal')
+
+                // Description
+                asNode().appendNode(
+                        'description',
+                        'Microsoft Identity library for Android gives you the ability to add authentication to your application with just a few lines of additional code. Using our MSAL SDKs you can quickly and easily extend your existing application to all the employees that use MSA, B2C, Azure AD and Active Directory on-premises using Active Directory Federation Services, including Office365 customers.'
+                )
+
+                // URL
+                asNode().appendNode('url', 'https://github.com/AzureAD/microsoft-authentication-library-for-android')
+
+                // Inception Year
+                asNode().appendNode('inceptionYear', '2016')
+
+                // Licenses
+                asNode().appendNode('licenses').appendNode('license').appendNode('name', 'MIT License')
+
+                // Developers
+                def developerNode = asNode().appendNode('developers').appendNode('developer')
+                developerNode.appendNode('id', 'microsoft')
+                developerNode.appendNode('name', 'Microsoft')
+
+                // SCM
+                asNode().appendNode('scm').appendNode('url', 'https://github.com/AzureAD/microsoft-authentication-library-for-android/tree/master')
+
+                // Properties
+                def propertiesNode = asNode().appendNode('properties')
+                propertiesNode.appendNode('branch', 'master')
+                propertiesNode.appendNode('version', project.version)
+
+                def dependenciesNode = asNode().appendNode('dependencies')
+
+                def deps = configurations.implementation.allDependencies.asList()
+                deps.addAll(configurations.distImplementation.allDependencies.asList())
+
+                //Iterate over the implementation dependencies (we don't want the test ones), adding a <dependency> node for each
+                deps.each {
+                    if (it.group != null && it.name != null) {
+                        def dependencyNode = dependenciesNode.appendNode('dependency')
+                        dependencyNode.appendNode('groupId', it.group)
+                        dependencyNode.appendNode('artifactId', it.name)
+                        dependencyNode.appendNode('version', it.version)
+                    }
+                }
+
+            }
+
+            artifact(sourcesJar)
+            artifact(javadocJar)
+            artifact("$buildDir/outputs/aar/msal-${project.version}.aar")
+        }
+
+    }
+}
 tasks.whenTaskAdded { task ->
     if (task.name == 'assembleDebug' || task.name == 'assembleRelease') {
         task.dependsOn 'checkstyle', 'pmd', 'lint', 'javadocJar', 'sourcesJar'
