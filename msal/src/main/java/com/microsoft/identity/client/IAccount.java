@@ -31,6 +31,4 @@ public interface IAccount {
 
     String getUsername();
 
-    boolean isCredentialPresent();
-
 }
