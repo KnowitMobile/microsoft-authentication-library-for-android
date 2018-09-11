@@ -106,9 +106,11 @@ public class LocalMSALController extends MSALController {
         AuthorizationRequest.Builder builder = strategy.createAuthorizationRequestBuilder();
 
         List<String> msalScopes = new ArrayList<>();
-        msalScopes.add("openid");
-        msalScopes.add("profile");
-        msalScopes.add("offline_access");
+        if(strategy.supportsOIDC()) {
+            msalScopes.add("openid");
+            msalScopes.add("profile");
+            msalScopes.add("offline_access");
+        }
         msalScopes.addAll(parameters.getScopes());
         msalScopes.addAll(parameters.getExtraScopesToConsent());
 

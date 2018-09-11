@@ -1,18 +1,9 @@
 {
-  "client_id" : "",
-  "redirect_uri" : "",
+  "client_id" : "86d15sqys79ck1",
+  "redirect_uri" : "http://localhost/someapp",
   "authorities" : [
     {
-      "type": "AAD",
-      "audience": {
-        "type": "AzureADMyOrg",
-        "tenant_id": "[tenantid]"
-      },
-      "slice": {
-        "slice": "test",
-        "dc": "WUS"
-      },
-      "flight_parameters": [{"key1": "value1"}, {"key2": "value2"}]
+      "type": "LI"
     }
   ]
 }

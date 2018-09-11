@@ -225,6 +225,8 @@ public final class PublicClientApplication {
         mTokenCache = new TokenCache(mAppContext);
         mOauth2TokenCache = mTokenCache.getOAuth2TokenCache();
         setupConfiguration(configFileResourceId);
+        mRedirectUri = mPublicClientConfiguration.getRedirectUri();
+        mClientId = mPublicClientConfiguration.getClientId();
     }
 
 
@@ -980,9 +982,13 @@ public final class PublicClientApplication {
 
         MSALAcquireTokenOperationParameters params = new MSALAcquireTokenOperationParameters();
 
-        String authorityString = StringUtil.isEmpty(authority) ?  mAuthorityString : authority;
-
-        Authority authorityObject = Authority.getAuthorityFromAuthorityUrl(authorityString);
+        if(mPublicClientConfiguration.getAuthorities().size() == 1){
+            params.setAuthority(mPublicClientConfiguration.getAuthorities().get(0));
+        }else {
+            String authorityString = StringUtil.isEmpty(authority) ? mAuthorityString : authority;
+            Authority authorityObject = Authority.getAuthorityFromAuthorityUrl(authorityString);
+            params.setAuthority(authorityObject);
+        }
         //TODO: Confirm that is a known authority immediately.
 
         params.setScopes(Arrays.asList(scopes));
@@ -994,7 +1000,7 @@ public final class PublicClientApplication {
         params.setExtraQueryStringParameters(extraQueryParams);
         params.setExtraScopesToConsent(Arrays.asList(extraScopesToConsent));
         params.setUIBehavior(uiBehavior);
-        params.setAuthority(authorityObject);
+
         params.setAppContext(mAppContext);
 
         return params;

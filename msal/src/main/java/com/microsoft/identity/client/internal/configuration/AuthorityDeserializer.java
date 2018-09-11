@@ -9,6 +9,7 @@ import com.microsoft.identity.client.authorities.ActiveDirectoryFederationServic
 import com.microsoft.identity.client.authorities.Authority;
 import com.microsoft.identity.client.authorities.AzureActiveDirectoryAuthority;
 import com.microsoft.identity.client.authorities.AzureActiveDirectoryB2CAuthority;
+import com.microsoft.identity.client.authorities.LiAuthority;
 import com.microsoft.identity.client.authorities.UnknownAuthority;
 
 import java.lang.reflect.Type;
@@ -30,6 +31,8 @@ public class AuthorityDeserializer implements JsonDeserializer<Authority> {
                     return context.deserialize(authorityObject, AzureActiveDirectoryB2CAuthority.class);
                 case "ADFS":
                     return context.deserialize(authorityObject, ActiveDirectoryFederationServicesAuthority.class);
+                case "LI":
+                    return context.deserialize(authorityObject, LiAuthority.class);
                 default:
                     return context.deserialize(authorityObject, UnknownAuthority.class);
             }
